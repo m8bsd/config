@@ -1,0 +1,312 @@
+.\" do-snapshot.1 - DigitalOcean Snapshot Tool for FreeBSD
+.\" Man page in mdoc(7) format — render with: man ./do-snapshot.1
+.\"
+.Dd April 10, 2026
+.Dt DO-SNAPSHOT 1
+.Os FreeBSD
+.
+.Sh NAME
+.Nm do-snapshot
+.Nd automated DigitalOcean droplet snapshot tool for FreeBSD
+.
+.Sh SYNOPSIS
+.Nm
+.Op Fl t Ar token
+.Op Fl k Ar keep
+.Op Fl n Ar prefix
+.Op Fl p
+.Op Fl v
+.Op Fl h
+.Op Ar droplet
+.
+.Sh DESCRIPTION
+.Nm
+creates and manages snapshots of DigitalOcean droplets via the
+DigitalOcean API v2.
+It is written in pure POSIX
+.Xr sh 1
+and uses
+.Xr fetch 1
+from the FreeBSD base system as its HTTP client.
+.Pp
+When run on a droplet,
+.Nm
+auto-detects the current droplet ID via the DigitalOcean metadata
+endpoint
+.Pq 169.254.169.254
+and snapshots only that droplet.
+When run on a remote host, it lists and snapshots all droplets
+accessible by the supplied API token, or the single droplet identified
+by the optional
+.Ar droplet
+argument.
+.Pp
+After each snapshot is created, old snapshots whose names match the
+configured prefix are pruned so that at most
+.Ar keep
+snapshots are retained per droplet.
+.Pp
+The following options are available:
+.Bl -tag -width indent
+.It Fl t Ar token
+DigitalOcean personal access token with read and write scope.
+If not supplied,
+.Ev DO_API_TOKEN
+is read from the environment.
+.It Fl k Ar keep
+Number of snapshots to keep per droplet.
+Oldest snapshots beyond this count are deleted.
+Defaults to
+.Sy 7 .
+.It Fl n Ar prefix
+Prefix used when naming new snapshots and when identifying existing
+snapshots for retention enforcement.
+Snapshots whose names do not begin with this prefix are never deleted.
+Defaults to
+.Sy auto .
+.It Fl p
+Power off the droplet gracefully before taking the snapshot, then
+power it back on afterwards.
+A graceful
+.Sy shutdown
+action is attempted first; if the droplet has not reached the
+.Sy off
+state within 120 seconds a hard
+.Sy power_off
+is issued.
+By default snapshots are taken live.
+.It Fl v
+Enable verbose debug output to stderr.
+.It Fl h
+Print a usage summary and exit.
+.It Ar droplet
+Optional name or numeric ID of a single droplet to snapshot.
+When omitted, all reachable droplets are processed
+.Pq or only the current droplet when run on a droplet .
+.El
+.
+.Sh SNAPSHOT NAMING
+Snapshots are named using the pattern:
+.Pp
+.D1 Ar prefix Ns - Ns Ar droplet-name Ns - Ns Ar timestamp
+.Pp
+where
+.Ar timestamp
+is a UTC ISO\~8601 value of the form
+.Sy YYYYMMDDTHHMMSSz .
+Example:
+.Pp
+.D1 auto-web-prod-01-20240410T120000Z
+.
+.Sh RETENTION POLICY
+Only snapshots whose names begin with the configured
+.Fl n Ar prefix
+are counted and eligible for deletion.
+Snapshots created outside
+.Nm
+are never touched.
+.Pp
+After a new snapshot is confirmed complete, snapshots are sorted by
+creation time ascending.
+If the total count exceeds
+.Fl k Ar keep ,
+the oldest
+.Pq total\ \-\ keep
+snapshots are deleted via the API.
+.
+.Sh PERIODIC INTEGRATION
+.Nm
+integrates with
+.Xr periodic 8 .
+Install it as a daily job:
+.Pp
+.Dl cp do-snapshot.sh /usr/local/etc/periodic/daily/500.do-snapshot
+.Dl chmod +x /usr/local/etc/periodic/daily/500.do-snapshot
+.Pp
+Then configure it in
+.Pa /etc/periodic.conf :
+.Bd -literal -offset indent
+do_snapshot_enable="YES"
+DO_API_TOKEN="your_token_here"
+do_snapshot_keep=7
+do_snapshot_prefix="auto"
+do_snapshot_poweroff="NO"
+do_snapshot_verbose="NO"
+.Ed
+.Pp
+The job honours the
+.Va do_snapshot_enable
+knob; set it to
+.Sy YES
+to activate it.
+Output is captured by
+.Xr periodic 8
+and mailed to root only if any output is produced.
+.
+.Sh ENVIRONMENT
+.Bl -tag -width DO_API_TOKEN
+.It Ev DO_API_TOKEN
+DigitalOcean personal access token.
+Used when
+.Fl t
+is not supplied.
+.It Va do_snapshot_enable
+Consumed by
+.Xr periodic 8 .
+Set to
+.Sy YES
+to enable the daily job.
+.It Va do_snapshot_keep
+Default retention count.
+Equivalent to
+.Fl k .
+.It Va do_snapshot_prefix
+Default snapshot name prefix.
+Equivalent to
+.Fl n .
+.It Va do_snapshot_poweroff
+Set to
+.Sy YES
+to enable power-off mode by default.
+Equivalent to
+.Fl p .
+.It Va do_snapshot_verbose
+Set to
+.Sy YES
+to enable verbose logging by default.
+Equivalent to
+.Fl v .
+.El
+.
+.Sh FILES
+.Bl -tag -width /usr/local/etc/periodic/daily/500.do-snapshot
+.It Pa /usr/local/bin/do-snapshot
+Recommended installation path for interactive use.
+.It Pa /usr/local/etc/periodic/daily/500.do-snapshot
+Recommended installation path for
+.Xr periodic 8
+daily execution.
+.It Pa /etc/periodic.conf
+System-wide
+.Xr periodic 8
+configuration file.
+.It Pa /etc/periodic.conf.local
+Local overrides for
+.Xr periodic 8
+configuration.
+.El
+.
+.Sh EXIT STATUS
+.Ex -std
+.Pp
+A non-zero exit status indicates that at least one snapshot action
+failed.
+Individual droplet failures do not abort processing of remaining
+droplets.
+.
+.Sh EXAMPLES
+Snapshot the current droplet using the token from the environment,
+keeping the default of 7 snapshots:
+.Pp
+.Dl DO_API_TOKEN=mytoken do-snapshot.sh
+.Pp
+Snapshot all droplets accessible by the token, keeping only the 3 most
+recent snapshots each, with verbose output:
+.Pp
+.Dl do-snapshot.sh -t mytoken -k 3 -v
+.Pp
+Snapshot a specific droplet by name:
+.Pp
+.Dl do-snapshot.sh -t mytoken web-prod-01
+.Pp
+Power off before snapshot and use a custom prefix:
+.Pp
+.Dl do-snapshot.sh -t mytoken -p -n nightly
+.Pp
+Test the
+.Xr periodic 8
+job manually:
+.Pp
+.Dl /usr/local/etc/periodic/daily/500.do-snapshot
+.Pp
+Verify the API token is valid:
+.Bd -literal -offset indent
+fetch -q -o - \\
+    --header "Authorization: Bearer $DO_API_TOKEN" \\
+    https://api.digitalocean.com/v2/account | jq .
+.Ed
+.
+.Sh DIAGNOSTICS
+.Bl -diag
+.It "No API token. Set DO_API_TOKEN or use -t TOKEN."
+Neither the
+.Fl t
+flag nor the
+.Ev DO_API_TOKEN
+environment variable was provided.
+.It "Required command not found: jq"
+Install
+.Xr jq 1
+with
+.Ic pkg install jq .
+.It "Action NNNN failed."
+The DigitalOcean API reported an error for the snapshot action.
+Check the droplet status in the DigitalOcean control panel.
+.It "Timed out waiting for action NNNN"
+The snapshot action did not complete within 3600 seconds.
+Large droplets may require more time; verify the action status via the
+API or control panel.
+.It "Shutdown timeout \(em forcing power-off."
+The droplet did not shut down gracefully within 120 seconds.
+A hard power-off was issued.
+.El
+.
+.Sh SEE ALSO
+.Xr fetch 1 ,
+.Xr jq 1 ,
+.Xr sh 1 ,
+.Xr periodic 8 ,
+.Xr periodic.conf 5
+.Pp
+DigitalOcean API v2 reference:
+.Lk https://docs.digitalocean.com/reference/api/api-reference/
+.
+.Sh AUTHORS
+.An m8bsd
+.Aq Mt m8bsd@example.com
+.
+.Sh BUGS
+In-progress snapshot actions are not visible via the snapshots endpoint.
+Running
+.Nm
+while a previous snapshot is still being created may trigger a second
+snapshot.
+Avoid scheduling runs more frequently than once per hour.
+.Pp
+Only completed snapshots are counted towards the retention limit.
+A pending snapshot will not be pruned even if it would exceed the
+.Fl k
+threshold.
+.
+.Sh SECURITY CONSIDERATIONS
+The API token grants full read and write access to all resources in your
+DigitalOcean account.
+Store it in
+.Pa /etc/periodic.conf
+with mode
+.Sy 0600
+and owned by
+.Sy root .
+Never pass the token on the command line in a multi-user environment as
+it will be visible in
+.Xr ps 1
+output.
+.
+.Sh HISTORY
+Originally written as a FreeBSD-native rewrite of the
+.Nm do-snapshot
+project, replacing bash, curl, and Linux-specific conventions with
+.Xr sh 1 ,
+.Xr fetch 1 ,
+and
+.Xr periodic 8 .
