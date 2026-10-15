@@ -1,0 +1,98 @@
+.\" fbsd-config.7 - overview of FreeBSD system configuration
+.\" Written in mdoc(7). Render with: mandoc -T utf8 fbsd-config.7
+.Dd October 15, 2026
+.Dt FBSD-CONFIG 7
+.Os FreeBSD
+.Sh NAME
+.Nm fbsd-config
+.Nd overview of FreeBSD system configuration files
+.Sh DESCRIPTION
+FreeBSD keeps its system configuration in a small number of plain text files,
+mostly under
+.Pa /etc
+and
+.Pa /boot .
+This page is a quick map of where each kind of setting lives and
+which tool to use to change it.
+.Pp
+Settings fall into three layers:
+.Bl -enum -offset indent
+.It
+Boot-time kernel and module settings, read by the loader.
+.It
+Runtime kernel settings, applied with
+.Xr sysctl 8 .
+.It
+Userland services and networking, started by
+.Xr rc 8 .
+.El
+.Sh FILES
+.Bl -tag -width ".Pa /boot/loader.conf" -compact
+.It Pa /etc/rc.conf
+Main system configuration: hostname, network interfaces, services to enable.
+Site overrides go here; defaults live in
+.Pa /etc/defaults/rc.conf
+and should not be edited.
+.It Pa /etc/rc.conf.d/
+Optional per-service fragments, one file per service.
+.It Pa /boot/loader.conf
+Boot loader variables and kernel modules to load at boot.
+.It Pa /etc/sysctl.conf
+Kernel state variables applied at boot time.
+.It Pa /etc/fstab
+File systems and swap to mount at boot.
+.It Pa /etc/resolv.conf
+DNS resolver settings.
+.It Pa /etc/ssh/sshd_config
+Configuration for the OpenSSH server.
+.It Pa /etc/pf.conf
+Rules for the
+.Xr pf 4
+packet filter.
+.It Pa /etc/make.conf
+Build options used when compiling ports and the base system.
+.It Pa /etc/periodic.conf
+Settings for the daily, weekly and monthly
+.Xr periodic 8
+jobs.
+.El
+.Sh EXAMPLES
+Enable the SSH daemon and set a hostname using
+.Xr sysrc 8 :
+.Bd -literal -offset indent
+# sysrc sshd_enable=YES
+# sysrc hostname="myhost.example.org"
+.Ed
+.Pp
+A minimal
+.Pa /etc/rc.conf :
+.Bd -literal -offset indent
+hostname="myhost.example.org"
+ifconfig_em0="DHCP"
+sshd_enable="YES"
+ntpd_enable="YES"
+.Ed
+.Pp
+Load a module at boot in
+.Pa /boot/loader.conf :
+.Bd -literal -offset indent
+zfs_load="YES"
+kern.vty="vt"
+.Ed
+.Pp
+Start, stop or restart a service after changing its settings:
+.Bd -literal -offset indent
+# service sshd restart
+.Ed
+.Sh SEE ALSO
+.Xr loader.conf 5 ,
+.Xr rc.conf 5 ,
+.Xr sysctl.conf 5 ,
+.Xr fstab 5 ,
+.Xr pf.conf 5 ,
+.Xr sysrc 8 ,
+.Xr service 8 ,
+.Xr sysctl 8 ,
+.Xr rc 8
+.Sh AUTHORS
+Maintained by the site administrator.
